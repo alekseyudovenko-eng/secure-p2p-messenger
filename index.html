@@ -234,7 +234,8 @@
     <script>
         // ВНИМАНИЕ: Для работы через GitHub Pages замените 'http://localhost:3000' 
         // на URL вашего запущенного сервера (например, https://your-app.onrender.com)
-        const SIGNALING_SERVER_URL = 'http://localhost:3000'; 
+        // Важно: используйте https, так как Render предоставляет SSL
+        const SIGNALING_SERVER_URL = 'https://secure-p2p-server.onrender.com';  
         const socket = io(SIGNALING_SERVER_URL);
         
         const rtcConfig = {
