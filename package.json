@@ -1,0 +1,11 @@
+{
+  "name": "secure-p2p-messenger",
+  "version": "1.0.0",
+  "description": "P2P Video Messenger",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5"
+  }
+}
