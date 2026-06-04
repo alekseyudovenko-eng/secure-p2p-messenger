@@ -135,22 +135,24 @@
         let localStream, peerConnection, dataChannel, myId;
         
         // Настройка WebRTC
-        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-        async function register() {
-            myId = document.getElementById('myId').value;
-            if(!myId) return alert("Введите ID!");
-            
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                document.getElementById('localVideo').srcObject = localStream;
-                socket.emit('register', myId);
-                console.log("Зарегистрирован:", myId);
-            } catch(e) {
-                alert("Ошибка камеры! Разрешите доступ.");
-                console.error(e);
-            }
-        }
+        // Замените старую строку const config = ... на этот блок:
+        const config = { 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                // Публичный TURN сервер для тестов (может быть перегружен, но лучше чем ничего)
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ] 
+        };
 
         // Обновление списка пользователей
         socket.on('user-list', (users) => {
