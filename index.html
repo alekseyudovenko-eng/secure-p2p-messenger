@@ -14,7 +14,6 @@
             flex-direction: column;
             height: 100vh;
         }
-        /* Верхняя панель */
         .header {
             background: #2d2d2d;
             padding: 15px;
@@ -30,31 +29,17 @@
             background: #333;
             color: white;
         }
-        /* КНОПКА ПОЗВОНИТЬ - Яркая и большая */
         #btnCall {
-            background-color: #28a745; /* Зеленый */
+            background-color: #28a745;
             color: white;
             font-weight: bold;
             cursor: pointer;
             border: none;
-            transition: 0.2s;
         }
-        #btnCall:hover {
-            background-color: #218838;
-            transform: scale(1.05);
-        }
-        #btnCall:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-            transform: none;
-        }
+        #btnCall:hover { background-color: #218838; }
+        #btnCall:disabled { background-color: #555; cursor: not-allowed; }
         
-        /* Основная часть */
-        .main {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
+        .main { display: flex; flex: 1; overflow: hidden; }
         .video-area {
             flex: 2;
             background: black;
@@ -63,11 +48,7 @@
             justify-content: center;
             align-items: center;
         }
-        video {
-            width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
+        video { width: 100%; max-height: 100%; object-fit: contain; }
         #localVideo {
             position: absolute;
             bottom: 20px;
@@ -84,13 +65,7 @@
             flex-direction: column;
             padding: 10px;
         }
-        #messages {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            border: 1px solid #333;
-            padding: 5px;
-        }
+        #messages { flex: 1; overflow-y: auto; margin-bottom: 10px; border: 1px solid #333; padding: 5px; }
         .msg { margin: 5px 0; padding: 5px; border-radius: 4px; }
         .sent { background: #0056b3; text-align: right; }
         .received { background: #444; }
@@ -98,7 +73,6 @@
 </head>
 <body>
 
-    <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
     <div class="header">
         <input type="text" id="myId" placeholder="Ваш ID (например, Alex)" style="width: 150px;">
         <button onclick="register()">Войти</button>
@@ -107,12 +81,10 @@
             <option value="">Список пуст...</option>
         </select>
         
-        <!-- КНОПКА ПОЗВОНИТЬ -->
         <button id="btnCall" onclick="startCall()">📞 ПОЗВОНИТЬ</button>
         <button id="btnEnd" onclick="endCall()" disabled style="background:#dc3545;">❌ Сброс</button>
     </div>
 
-    <!-- ВИДЕО И ЧАТ -->
     <div class="main">
         <div class="video-area">
             <video id="remoteVideo" autoplay playsinline></video>
@@ -134,13 +106,11 @@
         const socket = io('https://secure-p2p-messenger.onrender.com');
         let localStream, peerConnection, dataChannel, myId;
         
-        // Настройка WebRTC
-        // Замените старую строку const config = ... на этот блок:
+        // НАСТРОЙКИ WEBRTC С TURN-СЕРВЕРАМИ
         const config = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                // Публичный TURN сервер для тестов (может быть перегружен, но лучше чем ничего)
                 {
                     urls: 'turn:openrelay.metered.ca:80',
                     username: 'openrelayproject',
@@ -153,6 +123,25 @@
                 }
             ] 
         };
+
+        // 1. ФУНКЦИЯ РЕГИСТРАЦИИ (БЫЛА ПРОПУЩЕНА)
+        async function register() {
+            myId = document.getElementById('myId').value;
+            if(!myId) return alert("Введите ID!");
+            
+            try {
+                // Запрашиваем камеру и микрофон
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                
+                // Отправляем ID на сервер
+                socket.emit('register', myId);
+                console.log("Зарегистрирован как:", myId);
+            } catch(e) {
+                alert("Ошибка доступа к камере! Разрешите доступ в браузере.");
+                console.error(e);
+            }
+        }
 
         // Обновление списка пользователей
         socket.on('user-list', (users) => {
@@ -174,13 +163,16 @@
             console.log("КНОПКА НАЖАТА!");
             const target = document.getElementById('userList').value;
             if(!target) return alert("Выберите кого-нибудь из списка!");
-            if(!localStream) return alert("Сначала нажмите 'Войти' и разрешите камеру!");
+            if(!localStream) return alert("Сначала нажмите 'Войти'!");
 
             peerConnection = new RTCPeerConnection(config);
             
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
+            peerConnection.ontrack = e => {
+                console.log("Получено удаленное видео!");
+                document.getElementById('remoteVideo').srcObject = e.streams[0];
+            };
             
             peerConnection.onicecandidate = e => {
                 if(e.candidate) socket.emit('ice-candidate', { to: target, candidate: e.candidate });
@@ -188,7 +180,7 @@
 
             dataChannel = peerConnection.createDataChannel('chat');
             dataChannel.onmessage = e => addMsg(e.data, 'received');
-            dataChannel.onopen = () => console.log("Канал данных открыт");
+            dataChannel.onopen = () => console.log("Чат готов");
 
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
@@ -197,7 +189,6 @@
             
             document.getElementById('btnCall').disabled = true;
             document.getElementById('btnEnd').disabled = false;
-            console.log("Звонок инициирован");
         }
 
         async function endCall() {
@@ -212,7 +203,11 @@
             if(confirm(`Звонок от ${data.from}. Принять?`)) {
                 peerConnection = new RTCPeerConnection(config);
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
+                
+                peerConnection.ontrack = e => {
+                    console.log("Получено удаленное видео (входящее)!");
+                    document.getElementById('remoteVideo').srcObject = e.streams[0];
+                };
                 
                 peerConnection.ondatachannel = e => {
                     dataChannel = e.channel;
@@ -243,8 +238,6 @@
                 dataChannel.send(text);
                 addMsg(text, 'sent');
                 input.value = '';
-            } else {
-                console.log("Канал данных еще не открыт или сообщение пустое");
             }
         }
 
