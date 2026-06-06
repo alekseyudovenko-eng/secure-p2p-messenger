@@ -26,6 +26,9 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            /* Запрет выделения текста для ощущения приложения */
+            user-select: none; 
+            -webkit-user-select: none;
         }
 
         /* --- ЭКРАН ВХОДА --- */
@@ -36,21 +39,23 @@
             flex-direction: column;
         }
         .login-box {
-            background: var(--bg-panel); padding: 30px; border-radius: 12px;
+            background: var(--bg-panel); padding: 30px; border-radius: 16px;
             width: 85%; max-width: 320px; text-align: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--border);
         }
         .login-input {
-            width: 100%; padding: 12px; margin: 20px 0;
+            width: 100%; padding: 15px; margin: 20px 0;
             background: #2c2c2c; border: 1px solid var(--border);
-            color: white; border-radius: 6px; font-size: 18px; text-align: center;
+            color: white; border-radius: 8px; font-size: 18px; text-align: center;
             box-sizing: border-box; outline: none;
         }
         .btn-login {
-            width: 100%; padding: 12px; background: var(--accent);
-            color: white; border: none; border-radius: 6px;
+            width: 100%; padding: 15px; background: var(--accent);
+            color: white; border: none; border-radius: 8px;
             font-size: 16px; font-weight: bold; cursor: pointer;
+            transition: 0.2s;
         }
+        .btn-login:active { transform: scale(0.98); }
 
         /* --- ОСНОВНОЙ ИНТЕРФЕЙС --- */
         #app-interface { display: none; height: 100%; position: relative; }
@@ -60,12 +65,16 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; z-index: 1;
         }
-        #remoteVideo { width: 100%; height: 100%; object-fit: cover; }
+        #remoteVideo { 
+            width: 100%; height: 100%; object-fit: cover; 
+            /* Важно для Android */
+            transform: translateZ(0); 
+        }
         
         /* Мое видео (PiP) */
         #localVideo {
-            position: absolute; bottom: 100px; right: 20px;
-            width: 120px; height: 160px; /* Портретный режим для телефона */
+            position: absolute; bottom: 120px; right: 20px;
+            width: 110px; height: 150px;
             object-fit: cover; border: 2px solid rgba(255,255,255,0.2);
             border-radius: 12px; background: #222; z-index: 2;
             box-shadow: 0 4px 15px rgba(0,0,0,0.6);
@@ -75,24 +84,24 @@
         /* Статус сверху */
         .status-bar {
             position: absolute; top: 0; left: 0; width: 100%;
-            padding: 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            padding: 20px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
             z-index: 10; display: flex; justify-content: space-between; align-items: center;
             pointer-events: none;
         }
         .my-id-badge {
             background: rgba(255,255,255,0.15); backdrop-filter: blur(5px);
-            padding: 5px 12px; border-radius: 20px; font-size: 14px; font-weight: bold;
-            pointer-events: auto; cursor: pointer;
+            padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold;
+            pointer-events: auto; cursor: pointer; color: white;
         }
         .call-status {
-            background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 15px; font-size: 12px;
+            background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 15px; font-size: 13px; color: #fff;
         }
 
         /* Панель управления снизу */
         .controls-bar {
             position: absolute; bottom: 0; left: 0; width: 100%;
-            height: 90px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            z-index: 10; display: flex; justify-content: center; align-items: center; gap: 20px;
+            height: 100px; background: linear-gradient(to top, rgba(0,0,0,0.95), transparent);
+            z-index: 10; display: flex; justify-content: space-evenly; align-items: center;
             padding-bottom: 10px;
         }
         .ctrl-btn {
@@ -104,11 +113,19 @@
         }
         .ctrl-btn.active { background: white; color: black; }
         .ctrl-btn.disabled { background: var(--danger); color: white; border: none; }
-        .btn-hangup { background: var(--danger); width: 60px; height: 60px; display: none; }
+        
+        /* Кнопка сброса (большая красная) */
+        .btn-hangup { 
+            background: var(--danger); 
+            width: 64px; height: 64px; 
+            font-size: 24px;
+            display: none; /* Скрыта пока нет звонка */
+            box-shadow: 0 4px 15px rgba(207, 102, 121, 0.4);
+        }
 
         /* Кнопка чата (плавающая) */
         .fab-chat {
-            position: absolute; bottom: 110px; right: 20px;
+            position: absolute; bottom: 130px; right: 20px;
             width: 56px; height: 56px; background: var(--accent);
             border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             display: flex; align-items: center; justify-content: center;
@@ -117,10 +134,10 @@
         }
         .fab-chat:active { transform: scale(0.9); }
 
-        /* Панель чата (выезжающая) */
+        /* Панель чата */
         .chat-panel {
             position: absolute; top: 0; right: -100%; width: 100%; height: 100%;
-            background: rgba(30, 30, 30, 0.95); backdrop-filter: blur(10px);
+            background: rgba(30, 30, 30, 0.98); backdrop-filter: blur(10px);
             z-index: 30; transition: right 0.3s ease;
             display: flex; flex-direction: column;
         }
@@ -128,7 +145,7 @@
         
         .chat-header {
             padding: 20px; background: #252525; border-bottom: 1px solid #333;
-            display: flex; justify-content: space-between; align-items: center; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 18px;
         }
         .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 15px; line-height: 1.4; }
@@ -141,26 +158,53 @@
         }
         .chat-input-area input {
             flex: 1; background: #333; border: none; padding: 12px;
-            border-radius: 25px; color: white; outline: none;
+            border-radius: 25px; color: white; outline: none; font-size: 16px;
         }
         .chat-send-btn {
             width: 45px; height: 45px; background: var(--accent); border-radius: 50%;
             border: none; color: white; display: flex; align-items: center; justify-content: center;
         }
 
-        /* Поле ввода ID собеседника (скрыто, появляется при звонке или в меню) */
-        /* Для простоты на мобильном сделаем ввод ID через Prompt при нажатии на кнопку звонка, 
-           но лучше добавить кнопку "Позвонить" в интерфейс, если нет активного звонка */
-        
-        .call-init-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 15; text-align: center; width: 80%;
+        /* МОДАЛЬНОЕ ОКНО ВЫБОРА КОНТАКТОВ */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 100;
+            display: none; justify-content: center; align-items: center;
+            backdrop-filter: blur(3px);
         }
-        .btn-main-call {
-            background: var(--success); color: #000; border: none;
-            padding: 15px 30px; border-radius: 30px; font-size: 18px; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(3, 218, 198, 0.4); cursor: pointer;
-            display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 auto;
+        .modal-box {
+            background: var(--bg-panel); width: 90%; max-width: 350px;
+            border-radius: 16px; overflow: hidden; border: 1px solid var(--border);
+            animation: popIn 0.2s ease;
+        }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .modal-header {
+            padding: 15px; background: #252525; border-bottom: 1px solid var(--border);
+            font-weight: bold; display: flex; justify-content: space-between;
+        }
+        .contact-list {
+            max-height: 300px; overflow-y: auto;
+        }
+        .contact-item {
+            padding: 15px; border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .contact-item:hover { background: #333; }
+        .contact-item:active { background: #444; }
+        .contact-name { font-size: 16px; font-weight: 500; }
+        .btn-call-icon { color: var(--success); font-size: 18px; }
+        
+        .empty-list { padding: 20px; text-align: center; color: #666; }
+
+        /* Кнопка вызова модалки (если нет активного звонка) */
+        .fab-call {
+            position: absolute; bottom: 130px; left: 20px;
+            width: 56px; height: 56px; background: var(--success);
+            border-radius: 50%; box-shadow: 0 4px 10px rgba(3, 218, 198, 0.4);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; color: black; cursor: pointer; z-index: 20;
         }
     </style>
 </head>
@@ -191,17 +235,14 @@
             <div class="my-id-badge" id="myIdDisplay" onclick="copyId()">ID: ...</div>
         </div>
 
-        <!-- Кнопка начала звонка (по центру, пока нет звонка) -->
-        <div class="call-init-overlay" id="startCallOverlay">
-            <button class="btn-main-call" onclick="promptCall()">
-                <i class="fas fa-phone-alt"></i> ПОЗВОНИТЬ
-            </button>
-            <p style="font-size:12px; color:#aaa; margin-top:10px;">Нажмите, чтобы ввести ID друга</p>
-        </div>
-
-        <!-- Плавающая кнопка чата -->
+        <!-- Плавающие кнопки (Чат и Звонок) -->
         <div class="fab-chat" onclick="toggleChat()">
             <i class="fas fa-comment-alt"></i>
+        </div>
+        
+        <!-- Кнопка "Позвонить" (открывает список) -->
+        <div class="fab-call" id="fabCallBtn" onclick="openContactsModal()">
+            <i class="fas fa-phone-plus"></i>
         </div>
 
         <!-- Панель чата -->
@@ -222,7 +263,21 @@
             <button class="ctrl-btn active" id="btnMic" onclick="toggleMic()"><i class="fas fa-microphone"></i></button>
             <button class="ctrl-btn active" id="btnCam" onclick="toggleCam()"><i class="fas fa-video"></i></button>
             <button class="ctrl-btn" id="btnScreen" onclick="toggleScreen()"><i class="fas fa-desktop"></i></button>
+            <!-- Большая кнопка сброса по центру -->
             <button class="ctrl-btn btn-hangup" id="btnHangup" onclick="endCall()"><i class="fas fa-phone-slash"></i></button>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО КОНТАКТОВ -->
+    <div class="modal-overlay" id="contactsModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span>Выберите собеседника</span>
+                <i class="fas fa-times" onclick="closeContactsModal()" style="cursor:pointer;"></i>
+            </div>
+            <div class="contact-list" id="contactList">
+                <div class="empty-list">Загрузка контактов...</div>
+            </div>
         </div>
     </div>
 
@@ -240,6 +295,7 @@
 
         let localStream, peerConnection, dataChannel, myUserId;
         let isMicOn = true, isCamOn = true;
+        let onlineUsers = [];
 
         // UI Elements
         const loginScreen = document.getElementById('login-screen');
@@ -249,22 +305,28 @@
         const remoteVideo = document.getElementById('remoteVideo');
         const statusText = document.getElementById('statusText');
         const myIdDisplay = document.getElementById('myIdDisplay');
-        const startCallOverlay = document.getElementById('startCallOverlay');
+        const fabCallBtn = document.getElementById('fabCallBtn');
         const btnHangup = document.getElementById('btnHangup');
         const chatPanel = document.getElementById('chatPanel');
         const chatInput = document.getElementById('chatInput');
         const chatMessages = document.getElementById('chatMessages');
+        const contactsModal = document.getElementById('contactsModal');
+        const contactList = document.getElementById('contactList');
 
         // 1. ВХОД
         function attemptLogin() {
             const id = loginInput.value.trim();
             if (!id) return alert("Введите ID!");
             
+            // Запрос камеры с аудио
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
                 .then(stream => {
                     myUserId = id;
                     localStream = stream;
                     localVideo.srcObject = stream;
+                    
+                    // Фикс для Android: явный запуск
+                    localVideo.play().catch(e => console.log("Autoplay prevented", e));
                     
                     loginScreen.style.display = 'none';
                     appInterface.style.display = 'block';
@@ -274,26 +336,61 @@
                     statusText.innerText = "В сети";
                 })
                 .catch(err => {
-                    alert("Ошибка камеры! Разрешите доступ.");
+                    alert("Ошибка камеры! Разрешите доступ в настройках браузера.");
+                    console.error(err);
                 });
         }
         loginInput.addEventListener('keypress', e => { if(e.key === 'Enter') attemptLogin(); });
 
-        // 2. ЗВОНОК
-        function promptCall() {
-            const targetId = prompt("Введите ID собеседника:", "");
-            if (targetId) startCall(targetId);
+        // 2. СПИСОК КОНТАКТОВ
+        socket.on('user-list', (users) => {
+            onlineUsers = users.filter(u => u !== myUserId);
+            renderContactList();
+        });
+
+        function renderContactList() {
+            contactList.innerHTML = '';
+            if (onlineUsers.length === 0) {
+                contactList.innerHTML = '<div class="empty-list">Нет пользователей онлайн</div>';
+                return;
+            }
+            onlineUsers.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'contact-item';
+                div.innerHTML = `
+                    <span class="contact-name"><i class="fas fa-user-circle" style="margin-right:10px; color:#888;"></i> ${user}</span>
+                    <i class="fas fa-phone-alt btn-call-icon"></i>
+                `;
+                div.onclick = () => {
+                    closeContactsModal();
+                    startCall(user);
+                };
+                contactList.appendChild(div);
+            });
         }
 
+        function openContactsModal() {
+            renderContactList();
+            contactsModal.style.display = 'flex';
+        }
+
+        function closeContactsModal() {
+            contactsModal.style.display = 'none';
+        }
+
+        // 3. ЗВОНОК
         async function startCall(targetId) {
             statusText.innerText = "Набор номера...";
-            startCallOverlay.style.display = 'none'; // Скрыть кнопку вызова
+            fabCallBtn.style.display = 'none'; // Скрыть кнопку вызова
             
             peerConnection = new RTCPeerConnection(rtcConfig);
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = e => {
+                // Фикс для Android: гарантированное воспроизведение
                 remoteVideo.srcObject = e.streams[0];
+                remoteVideo.play().catch(e => console.error("Remote play error", e));
+                
                 statusText.innerText = "Звонок идет";
                 btnHangup.style.display = 'flex'; // Показать кнопку сброса
             };
@@ -313,12 +410,13 @@
         // Входящий
         socket.on('incoming-call', async (data) => {
             if (confirm(`Звонок от ${data.from}. Принять?`)) {
-                startCallOverlay.style.display = 'none';
+                fabCallBtn.style.display = 'none';
                 peerConnection = new RTCPeerConnection(rtcConfig);
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 peerConnection.ontrack = e => {
                     remoteVideo.srcObject = e.streams[0];
+                    remoteVideo.play().catch(e => console.error("Remote play error", e));
                     statusText.innerText = "Звонок идет";
                     btnHangup.style.display = 'flex';
                 };
@@ -348,12 +446,12 @@
             remoteVideo.srcObject = null;
             statusText.innerText = "Звонок завершен";
             btnHangup.style.display = 'none';
-            startCallOverlay.style.display = 'block'; // Вернуть кнопку вызова
+            fabCallBtn.style.display = 'flex'; // Вернуть кнопку вызова
             chatInput.disabled = true;
             peerConnection = null;
         }
 
-        // 3. ЧАТ И UI
+        // 4. ЧАТ И UI
         function toggleChat() {
             chatPanel.classList.toggle('open');
         }
@@ -429,4 +527,3 @@
     </script>
 </body>
 </html>
-
