@@ -94,95 +94,135 @@
   </div>
 
   <script>
-    const peer = new Peer(null, {
-      host: '0.peerjs.com', port: 443, path: '/', secure: true,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-        ]
-      }
-    });
-
-    let call, stream, myId, recent = JSON.parse(localStorage.getItem('p2p_recent') || '[]');
+    let peer, call, stream, myId;
+    let recent = JSON.parse(localStorage.getItem('p2p_recent') || '[]');
     const $ = id => document.getElementById(id);
 
-    // Вход
     function login() {
       const id = $('uid').value.trim().replace(/[^a-zA-Z0-9]/g, '');
       if (id.length < 3) return $('err').innerText = 'Только латиница и цифры (мин. 3)';
-      $('err').innerText = '';
+      
+      $('err').innerText = 'Подключение к сети...';
+      
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(s => {
-          stream = s; $('local').srcObject = s;
-          peer.id = id;
-          peer.on('open', () => {
-            myId = id; $('myid').innerText = `ID: ${id}`;
-            $('reg').style.display = 'none'; $('app').style.display = 'block';
-            $('st').innerText = 'В сети'; renderList();
+          stream = s;
+          $('local').srcObject = s;
+
+          // ИСПРАВЛЕНО: ID передается сразу в конструктор
+          peer = new Peer(id, {
+            host: '0.peerjs.com', port: 443, path: '/', secure: true,
+            config: {
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+              ]
+            }
           });
-        }).catch(() => $('err').innerText = 'Разрешите доступ к камере');
+
+          peer.on('open', () => {
+            myId = id;
+            $('myid').innerText = `ID: ${id}`;
+            $('reg').style.display = 'none';
+            $('app').style.display = 'block';
+            $('st').innerText = 'В сети';
+            renderList();
+          });
+
+          peer.on('error', (err) => {
+            console.error(err);
+            $('err').innerText = 'Ошибка: ' + err.type;
+            if (err.type === 'unavailable' || err.type === 'server-error') {
+              $('err').innerText = 'Сервер PeerJS недоступен. Попробуйте позже или включите VPN.';
+            }
+          });
+
+          peer.on('call', c => {
+            if (confirm(`Входящий звонок от ${c.peer}. Принять?`)) {
+              c.answer(stream);
+              setupCall(c);
+            } else {
+              c.close();
+            }
+          });
+        })
+        .catch(e => {
+          $('err').innerText = 'Разрешите доступ к камере/микрофону в браузере!';
+        });
     }
 
-    // Список контактов
     function renderList() {
       const u = $('ulist'); u.innerHTML = '';
       if (!recent.length) u.innerHTML = '<div class="empty">Нет сохранённых контактов</div>';
       recent.forEach(r => {
         const d = document.createElement('div'); d.className = 'uitem';
         d.innerHTML = `<span>${r}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="#4caf50"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>`;
-        d.onclick = () => { closeMenu(); dial(r); }; u.appendChild(d);
+        d.onclick = () => { closeMenu(); dial(r); }; 
+        u.appendChild(d);
       });
     }
+
     function openMenu() { $('menu').style.display = 'flex'; renderList(); }
     function closeMenu() { $('menu').style.display = 'none'; }
-    function callDirect() { const i = $('cid').value.trim(); if(i && i!==myId) { closeMenu(); dial(i); } }
+    
+    function callDirect() { 
+      const i = $('cid').value.trim(); 
+      if (i && i !== myId) { closeMenu(); dial(i); } 
+    }
 
-    // Звонок
     function dial(id) {
-      if (!recent.includes(id)) { recent.unshift(id); if(recent.length>5) recent.pop(); localStorage.setItem('p2p_recent', JSON.stringify(recent)); }
+      if (!peer || !peer.open) return alert('Подождите подключения к сети...');
+      if (!recent.includes(id)) { 
+        recent.unshift(id); 
+        if (recent.length > 5) recent.pop(); 
+        localStorage.setItem('p2p_recent', JSON.stringify(recent)); 
+      }
       $('st').innerText = `Соединение: ${id}`;
       call = peer.call(id, stream);
       setupCall(call);
     }
-
-    peer.on('call', c => {
-      $('st').innerText = `Входящий: ${c.peer}`;
-      c.answer(stream); setupCall(c);
-    });
 
     function setupCall(c) {
       call = c;
       c.on('stream', remote => {
         $('remote').srcObject = remote;
         // Android Fix
-        $('remote').muted = true; $('remote').play().catch(()=>{});
-        setTimeout(()=>$('remote').muted=false, 1500);
-        $('st').innerText = 'Подключено'; $('dot').classList.add('on');
-        $('fab').className = 'fab end'; $('hang').style.display = 'flex';
+        $('remote').muted = true; 
+        $('remote').play().catch(()=>{});
+        setTimeout(() => { $('remote').muted = false; }, 1500);
+        
+        $('st').innerText = 'Подключено'; 
+        $('dot').classList.add('on');
+        $('fab').className = 'fab end'; 
+        $('hang').style.display = 'flex';
       });
-      c.on('close', end); c.on('error', () => end());
+      c.on('close', endCall);
+      c.on('error', err => { console.error(err); endCall(); });
     }
 
-    function end() {
+    function endCall() {
       if (call) call.close();
-      $('remote').srcObject = null; $('st').innerText = 'Завершено'; $('dot').classList.remove('on');
-      $('fab').className = 'fab'; $('hang').style.display = 'none'; call = null;
+      $('remote').srcObject = null; 
+      $('st').innerText = 'Завершено'; 
+      $('dot').classList.remove('on');
+      $('fab').className = 'fab'; 
+      $('hang').style.display = 'none'; 
+      call = null;
     }
-    function hangup() { end(); }
+    function hangup() { endCall(); }
 
-    // Управление
     function toggle(type) {
-      if(!stream) return;
-      const t = type==='mic' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      if (!stream) return;
+      const t = type === 'mic' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
       t.enabled = !t.enabled;
-      $(type).className = t.enabled ? `cbtn on` : `cbtn off`;
+      $(type).className = t.enabled ? 'cbtn on' : 'cbtn off';
     }
-    function copyId() { if(myId) { navigator.clipboard.writeText(myId); alert('ID скопирован'); } }
+    function copyId() { 
+      if (myId) { navigator.clipboard.writeText(myId); alert('ID скопирован'); } 
+    }
 
-    // Enter в поле ID
-    $('uid').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
-    $('cid').addEventListener('keydown', e => { if(e.key==='Enter') callDirect(); });
+    $('uid').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+    $('cid').addEventListener('keydown', e => { if (e.key === 'Enter') callDirect(); });
   </script>
 </body>
 </html>
