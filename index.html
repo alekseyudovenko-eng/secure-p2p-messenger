@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>P2P Messenger</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- PeerJS для сигнализации (без своего сервера) -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <!-- Иконки -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -15,7 +17,7 @@
         body {
             font-family: 'Roboto', sans-serif; background-color: var(--bg-dark); color: var(--text);
             margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column;
-            user-select: none; -webkit-user-select: none;
+            user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
         }
 
         /* --- ВХОД --- */
@@ -145,7 +147,7 @@
     <!-- ИНТЕРФЕЙС -->
     <div id="app-interface">
         <div class="video-container">
-            <!-- ВАЖНО: playsinline muted для Android -->
+            <!-- playsinline + muted для Android -->
             <video id="remoteVideo" autoplay playsinline muted></video>
             <video id="localVideo" autoplay muted playsinline></video>
         </div>
@@ -174,7 +176,7 @@
         </div>
     </div>
 
-    <!-- СПИСОК -->
+    <!-- СПИСОК КОНТАКТОВ -->
     <div class="modal-overlay" id="contactsModal">
         <div class="modal-box">
             <div class="modal-header"><span>Контакты</span><i class="fas fa-times" onclick="closeContactsModal()" style="cursor:pointer;"></i></div>
@@ -183,23 +185,23 @@
     </div>
 
     <script>
-        const SIGNALING_SERVER_URL = 'https://secure-p2p-messenger.onrender.com';
-        const socket = io(SIGNALING_SERVER_URL);
-        
-        // ИСПРАВЛЕНИЕ 1: Добавлен TCP транспорт для обхода блокировок мобильных операторов
-        const rtcConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-                // Ключевое исправление для Android: transport=tcp
-                { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-            ]
-        };
+        // PeerJS инициализация с публичными серверами + TURN для обхода блокировок
+        const peer = new Peer(null, {
+            debug: 2,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+                ]
+            }
+        });
 
-        let localStream, peerConnection, dataChannel, myUserId;
-        let onlineUsers = [];
+        let localStream, currentCall, dataConnection, myUserId;
+        let onlineUsers = []; // PeerJS не дает список пользователей, поэтому храним вручную
 
+        // Элементы
         const loginScreen = document.getElementById('login-screen');
         const appInterface = document.getElementById('app-interface');
         const loginInput = document.getElementById('loginInput');
@@ -215,26 +217,25 @@
         const contactsModal = document.getElementById('contactsModal');
         const contactList = document.getElementById('contactList');
 
-        // ИСПРАВЛЕНИЕ 2: Принудительный запуск видео для Android
+        // === ФИКС ДЛЯ ANDROID: Принудительный запуск видео ===
         function forcePlayVideo() {
             if (remoteVideo.srcObject) {
-                // Сначала ставим muted, чтобы браузер разрешил автоплей
-                remoteVideo.muted = true; 
+                remoteVideo.muted = true; // Разрешаем автоплей
                 remoteVideo.play()
                     .then(() => {
-                        console.log("Видео запущено");
-                        // Через 2 секунды пробуем включить звук (если браузер позволит)
+                        console.log("✅ Видео запущено");
+                        // Пробуем включить звук через 2 сек
                         setTimeout(() => { remoteVideo.muted = false; }, 2000);
                     })
-                    .catch(e => console.warn("Автоплей заблокирован:", e));
+                    .catch(e => console.warn("⚠️ Автоплей заблокирован:", e));
             }
         }
 
+        // 1. ВХОД
         function attemptLogin() {
             const id = loginInput.value.trim();
-            if (!id) return alert("Введите ID!");
+            if (!id) return alert("Введите уникальный ID!");
             
-            // ИСПРАВЛЕНИЕ 3: Ограничение качества для стабильности на мобильных
             navigator.mediaDevices.getUserMedia({ 
                 video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
                 audio: true 
@@ -243,122 +244,127 @@
                 myUserId = id;
                 localStream = stream;
                 localVideo.srcObject = stream;
+                localVideo.play().catch(()=>{});
                 
-                loginScreen.style.display = 'none';
-                appInterface.style.display = 'block';
-                myIdDisplay.innerText = "ID: " + myUserId;
-                
-                socket.emit('register', myUserId);
-                statusText.innerText = "В сети";
+                // Ждем, пока PeerJS выдаст нам внутренний ID
+                peer.on('open', (peerId) => {
+                    loginScreen.style.display = 'none';
+                    appInterface.style.display = 'block';
+                    myIdDisplay.innerText = "ID: " + myUserId;
+                    statusText.innerText = "В сети: " + myUserId;
+                    
+                    // Сохраняем пользователя в "список" для отображения
+                    onlineUsers = [myUserId];
+                    renderContactList();
+                });
             })
             .catch(err => {
-                alert("Ошибка камеры! Разрешите доступ.");
+                alert("Ошибка камеры! Разрешите доступ в настройках.");
             });
         }
 
-        socket.on('user-list', (users) => {
-            onlineUsers = users.filter(u => u !== myUserId);
-            renderContactList();
-        });
-
+        // 2. ОТОБРАЖЕНИЕ КОНТАКТОВ
+        // В PeerJS нет серверного списка пользователей. 
+        // Пользователь должен САМ ввести/вставить ID друга.
+        // Мы показываем "список", но это заглушка с инструкцией.
         function renderContactList() {
-            contactList.innerHTML = '';
-            if (onlineUsers.length === 0) {
-                contactList.innerHTML = '<div class="empty-list">Нет пользователей онлайн</div>';
-                return;
-            }
-            onlineUsers.forEach(user => {
-                const div = document.createElement('div');
-                div.className = 'contact-item';
-                div.innerHTML = `<span class="contact-name">${user}</span><i class="fas fa-phone-alt" style="color:#03dac6"></i>`;
-                div.onclick = () => { closeContactsModal(); startCall(user); };
-                contactList.appendChild(div);
-            });
+            contactList.innerHTML = `
+                <div style="padding:15px; color:#888; font-size:13px; text-align:center;">
+                    <i class="fas fa-info-circle" style="margin-bottom:10px; font-size:20px;"></i><br>
+                    Чтобы позвонить:<br><br>
+                    1. Скопируйте свой ID (нажми на него сверху)<br>
+                    2. Отправьте другу<br>
+                    3. Друг вводит ВАШ ID и звонит вам
+                </div>
+                <div style="padding:10px; border-top:1px solid #333;">
+                    <input type="text" id="manualIdInput" placeholder="Вставьте ID друга" 
+                           style="width:100%; padding:10px; background:#333; border:none; border-radius:6px; color:white; margin-bottom:10px;">
+                    <button onclick="callFromInput()" 
+                            style="width:100%; padding:10px; background:var(--success); border:none; border-radius:6px; color:black; font-weight:bold; cursor:pointer;">
+                        📞 Позвонить по ID
+                    </button>
+                </div>
+            `;
         }
 
-        function openContactsModal() { renderContactList(); contactsModal.style.display = 'flex'; }
+        function callFromInput() {
+            const targetId = document.getElementById('manualIdInput').value.trim();
+            if (targetId && targetId !== myUserId) {
+                closeContactsModal();
+                startCall(targetId);
+            } else {
+                alert("Введите корректный ID собеседника");
+            }
+        }
+
+        function openContactsModal() { 
+            renderContactList(); 
+            contactsModal.style.display = 'flex'; 
+        }
         function closeContactsModal() { contactsModal.style.display = 'none'; }
 
-        async function startCall(targetId) {
+        // 3. ЗВОНОК
+        function startCall(targetId) {
             statusText.innerText = "Соединение...";
             fabCallBtn.style.display = 'none';
             
-            peerConnection = new RTCPeerConnection(rtcConfig);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-            peerConnection.ontrack = e => {
-                remoteVideo.srcObject = e.streams[0];
-                // Вызываем принудительный запуск
-                setTimeout(forcePlayVideo, 500); 
-                statusText.innerText = "Звонок идет";
-                btnHangup.style.display = 'flex';
-            };
-
-            peerConnection.onicecandidate = e => {
-                if (e.candidate) socket.emit('ice-candidate', { to: targetId, candidate: e.candidate });
-            };
-
-            dataChannel = peerConnection.createDataChannel('chat');
-            dataChannel.onopen = () => { chatInput.disabled = false; };
-            dataChannel.onmessage = e => addMsg(e.data, 'received');
-
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('call-user', { userToCall: targetId, signalData: offer, from: myUserId });
+            currentCall = peer.call(targetId, localStream);
+            handleCall(currentCall);
+            
+            // Чат
+            dataConnection = peer.connect(targetId);
+            setupDataChannel(dataConnection);
         }
 
-        // ИСПРАВЛЕНИЕ 4: Убран confirm() для Android (он блокирует поток)
-        socket.on('incoming-call', async (data) => {
-            statusText.innerText = "Входящий звонок...";
-            // Автоматически отвечаем для теста стабильности
-            // В реальном приложении здесь нужна красивая кнопка "Принять"
+        // Входящий звонок
+        peer.on('call', (call) => {
+            statusText.innerText = "Входящий...";
+            // Авто-ответ для стабильности (убираем confirm, который ломает поток на мобильных)
+            call.answer(localStream);
+            handleCall(call);
+        });
+
+        // Входящее соединение для чата
+        peer.on('connection', (conn) => {
+            if (dataConnection && dataConnection.open) { conn.close(); return; }
+            setupDataChannel(conn);
+        });
+
+        function handleCall(call) {
+            currentCall = call;
             
-            peerConnection = new RTCPeerConnection(rtcConfig);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-            
-            peerConnection.ontrack = e => {
-                remoteVideo.srcObject = e.streams[0];
-                setTimeout(forcePlayVideo, 500);
+            call.on('stream', (remoteStream) => {
+                remoteVideo.srcObject = remoteStream;
+                // Критичный фикс для Android
+                setTimeout(forcePlayVideo, 300);
                 statusText.innerText = "Звонок идет";
                 btnHangup.style.display = 'flex';
-            };
+            });
 
-            peerConnection.ondatachannel = e => {
-                dataChannel = e.channel;
-                dataChannel.onopen = () => { chatInput.disabled = false; };
-                dataChannel.onmessage = msg => addMsg(msg.data, 'received');
-            };
-
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('answer-call', { to: data.from, signal: answer });
-        });
-
-        socket.on('call-accepted', async (signal) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
-        });
-
-        socket.on('ice-candidate', async (cand) => {
-            if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-        });
-
-        function endCall() {
-            if (peerConnection) peerConnection.close();
-            remoteVideo.srcObject = null;
-            statusText.innerText = "Звонок завершен";
-            btnHangup.style.display = 'none';
-            fabCallBtn.style.display = 'flex';
-            chatInput.disabled = true;
-            peerConnection = null;
+            call.on('close', resetUI);
+            call.on('error', (err) => {
+                console.error("Call error:", err);
+                statusText.innerText = "Ошибка соединения";
+                resetUI();
+            });
         }
 
-        function toggleChat() { chatPanel.classList.toggle('open'); }
+        // 4. ЧАТ
+        function setupDataChannel(conn) {
+            dataConnection = conn;
+            conn.on('open', () => {
+                chatInput.disabled = false;
+                addMsg("Чат подключен", "sys");
+            });
+            conn.on('data', (data) => {
+                addMsg(data, 'received');
+            });
+        }
 
         function sendMsg() {
             const text = chatInput.value.trim();
-            if (text && dataChannel && dataChannel.readyState === 'open') {
-                dataChannel.send(text);
+            if (text && dataConnection && dataConnection.open) {
+                dataConnection.send(text);
                 addMsg(text, 'sent');
                 chatInput.value = '';
             }
@@ -373,6 +379,24 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
+        // 5. УПРАВЛЕНИЕ
+        function toggleChat() { chatPanel.classList.toggle('open'); }
+
+        function endCall() {
+            if (currentCall) currentCall.close();
+            if (dataConnection) dataConnection.close();
+            resetUI();
+        }
+
+        function resetUI() {
+            remoteVideo.srcObject = null;
+            statusText.innerText = "Звонок завершен";
+            btnHangup.style.display = 'none';
+            fabCallBtn.style.display = 'flex';
+            chatInput.disabled = true;
+            currentCall = null;
+        }
+
         function toggleMic() {
             if(localStream) {
                 const t = localStream.getAudioTracks()[0];
@@ -385,14 +409,25 @@
             if(localStream) {
                 const t = localStream.getVideoTracks()[0];
                 t.enabled = !t.enabled;
-                document.getElementById('btnCam').className = t.enabled ? 'ctrl-btn active' : 'ctrl-btn disabled'; // Иконку можно менять динамически
+                document.getElementById('btnCam').className = t.enabled ? 'ctrl-btn active' : 'ctrl-btn disabled';
             }
         }
 
         function copyId() {
+            if (!myUserId) return;
             navigator.clipboard.writeText(myUserId);
-            alert("ID скопирован!");
+            const old = myIdDisplay.innerText;
+            myIdDisplay.innerText = "✓ Скопировано";
+            setTimeout(() => myIdDisplay.innerText = "ID: " + myUserId, 1500);
         }
+
+        // Обработка ошибок PeerJS
+        peer.on('error', (err) => {
+            console.error("PeerJS error:", err);
+            if (err.type === 'unavailable') {
+                statusText.innerText = "Сервер PeerJS недоступен. Попробуйте позже.";
+            }
+        });
     </script>
 </body>
 </html>
