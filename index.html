@@ -1,228 +1,188 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple P2P Call</title>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <style>
-        body { 
-            font-family: sans-serif; background: #1a1a1a; color: white; 
-            margin: 0; padding: 20px; display: flex; flex-direction: column; 
-            height: 100vh; box-sizing: border-box; 
-        }
-        #login { text-align: center; margin-top: 100px; }
-        #app { display: none; flex: 1; flex-direction: column; }
-        video { width: 100%; max-height: 40%; background: black; margin: 5px 0; }
-        #remoteVideo { flex: 1; object-fit: cover; }
-        #localVideo { position: absolute; bottom: 100px; right: 20px; width: 120px; border: 2px solid white; }
-        #status { background: #333; padding: 10px; margin: 10px 0; border-radius: 4px; font-size: 14px; }
-        #myId { background: #007acc; padding: 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin: 10px 0; }
-        input, button { padding: 12px; margin: 5px; border-radius: 4px; border: none; font-size: 16px; }
-        input { background: #333; color: white; width: 200px; }
-        button { background: #03dac6; color: black; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #555; color: #888; cursor: not-allowed; }
-        .hidden { display: none !important; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>P2P Secure Call</title>
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <style>
+    :root { --bg:#0b0b0b; --panel:#141414; --border:#2a2a2a; --text:#e6e6e6; --accent:#ffffff; --danger:#cf6679; --success:#4caf50; --muted:#888; }
+    * { box-sizing:border-box; margin:0; padding:0; font-family:'Inter',system-ui,-apple-system,sans-serif; }
+    body { background:var(--bg); color:var(--text); height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+    
+    /* Экран регистрации */
+    #reg { position:fixed; inset:0; background:var(--bg); z-index:100; display:flex; align-items:center; justify-content:center; }
+    .reg-box { background:var(--panel); padding:32px; border-radius:10px; border:1px solid var(--border); width:85%; max-width:300px; text-align:center; }
+    .reg-box h1 { font-size:20px; font-weight:500; margin-bottom:24px; color:var(--accent); letter-spacing:0.5px; }
+    .input { width:100%; padding:14px; background:#1a1a1a; border:1px solid var(--border); color:var(--text); border-radius:6px; font-size:15px; outline:none; margin-bottom:12px; }
+    .btn { width:100%; padding:14px; background:var(--accent); color:#000; border:none; border-radius:6px; font-weight:600; cursor:pointer; transition:0.15s; }
+    .btn:hover { opacity:0.9; } .btn:active { transform:scale(0.98); }
+    .err { color:var(--danger); font-size:13px; margin-top:8px; min-height:18px; }
+
+    /* Основной интерфейс */
+    #app { display:none; height:100%; position:relative; }
+    .vid { position:absolute; inset:0; background:#000; }
+    #remote { width:100%; height:100%; object-fit:cover; }
+    #local { position:absolute; bottom:90px; right:16px; width:130px; aspect-ratio:16/9; object-fit:cover; border:1px solid #333; border-radius:6px; background:#111; box-shadow:0 4px 12px rgba(0,0,0,0.7); transform:scaleX(-1); }
+    
+    .status { position:absolute; top:16px; left:16px; background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:20px; font-size:13px; display:flex; align-items:center; gap:6px; backdrop-filter:blur(4px); }
+    .dot { width:6px; height:6px; border-radius:50%; background:#555; transition:0.2s; } .dot.on { background:var(--success); box-shadow:0 0 6px var(--success); }
+    .myid { position:absolute; top:16px; right:16px; background:rgba(255,255,255,0.1); padding:6px 12px; border-radius:20px; font-size:13px; cursor:pointer; user-select:none; }
+    
+    /* Управление */
+    .ctrl { position:absolute; bottom:0; left:0; width:100%; height:80px; background:linear-gradient(transparent, #000); display:flex; justify-content:center; align-items:center; gap:24px; }
+    .cbtn { width:48px; height:48px; border-radius:50%; background:rgba(255,255,255,0.12); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; transition:0.2s; }
+    .cbtn:hover { background:rgba(255,255,255,0.2); } .cbtn.on { background:#fff; color:#000; } .cbtn.off { background:var(--danger); }
+    
+    /* Кнопка вызова */
+    .fab { position:absolute; bottom:100px; left:50%; transform:translateX(-50%); width:56px; height:56px; border-radius:50%; background:var(--success); color:#000; border:none; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(76,175,80,0.4); transition:0.2s; }
+    .fab.end { background:var(--danger); box-shadow:0 4px 14px rgba(207,102,121,0.4); }
+    
+    /* Меню контактов */
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:50; display:none; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+    .mbox { background:var(--panel); width:88%; max-width:280px; border-radius:10px; border:1px solid var(--border); overflow:hidden; }
+    .mhead { padding:14px 16px; border-bottom:1px solid var(--border); font-weight:500; display:flex; justify-content:space-between; font-size:15px; }
+    .ulist { max-height:220px; overflow-y:auto; }
+    .uitem { padding:12px 16px; border-bottom:1px solid #1f1f1f; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:0.1s; font-size:14px; }
+    .uitem:hover { background:#1a1a1a; }
+    .uinput { padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; }
+    .uinput input { flex:1; margin:0; background:#1a1a1a; border:1px solid #333; color:var(--text); border-radius:6px; padding:10px; outline:none; font-size:14px; }
+    .uinput button { width:40px; background:#333; color:var(--text); border:none; border-radius:6px; cursor:pointer; }
+    .empty { padding:20px; text-align:center; color:var(--muted); font-size:13px; }
+  </style>
 </head>
 <body>
 
-    <!-- ВХОД -->
-    <div id="login">
-        <h2>Вход</h2>
-        <input type="text" id="userId" placeholder="Ваш ID (например, alex)">
-        <br>
-        <button onclick="doLogin()">ВОЙТИ</button>
-        <div id="loginError" style="color: #cf6679; margin-top: 10px;"></div>
+  <!-- РЕГИСТРАЦИЯ -->
+  <div id="reg">
+    <div class="reg-box">
+      <h1>Личный ID</h1>
+      <input class="input" id="uid" placeholder="a-z0-9, мин. 3 символа" maxlength="12" autocomplete="off">
+      <button class="btn" onclick="login()">ВОЙТИ В СЕТЬ</button>
+      <div class="err" id="err"></div>
+    </div>
+  </div>
+
+  <!-- ПРИЛОЖЕНИЕ -->
+  <div id="app">
+    <div class="vid">
+      <video id="remote" autoplay playsinline muted></video>
+      <video id="local" autoplay muted playsinline></video>
+    </div>
+    <div class="status"><div class="dot" id="dot"></div><span id="st">Подключение...</span></div>
+    <div class="myid" id="myid" onclick="copyId()">ID: ---</div>
+    
+    <button class="fab" id="fab" onclick="openMenu()"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg></button>
+    
+    <div class="ctrl">
+      <button class="cbtn on" id="mic" onclick="toggle('mic')"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></button>
+      <button class="cbtn on" id="cam" onclick="toggle('cam')"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></button>
+      <button class="cbtn" id="hang" onclick="hangup()" style="display:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.71c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.73-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button>
     </div>
 
-    <!-- ПРИЛОЖЕНИЕ -->
-    <div id="app">
-        <div id="status">Статус: Инициализация...</div>
-        <div id="myId" onclick="copyId()">Ваш ID: загрузка...</div>
-        
-        <video id="remoteVideo" autoplay playsinline muted></video>
-        <video id="localVideo" autoplay muted playsinline></video>
-        
-        <div style="margin-top: 10px;">
-            <input type="text" id="targetId" placeholder="ID собеседника">
-            <button id="callBtn" onclick="doCall()">📞 Позвонить</button>
-            <button id="hangupBtn" class="hidden" onclick="doHangup()" style="background:#cf6679;">❌ Сброс</button>
+    <!-- МЕНЮ КОНТАКТОВ -->
+    <div class="modal" id="menu" onclick="if(event.target===this)closeMenu()">
+      <div class="mbox">
+        <div class="mhead">Контакты <span onclick="closeMenu()" style="cursor:pointer">✕</span></div>
+        <div class="ulist" id="ulist"><div class="empty">Загрузка...</div></div>
+        <div class="uinput">
+          <input id="cid" placeholder="ID собеседника">
+          <button onclick="callDirect()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg></button>
         </div>
-        
-        <div style="margin-top: 10px; flex: 1; display: flex; flex-direction: column;">
-            <div id="chat" style="flex:1; background:#222; padding:10px; overflow-y:auto; border-radius:4px;"></div>
-            <div style="display:flex; margin-top:5px;">
-                <input type="text" id="msgInput" placeholder="Сообщение..." style="flex:1;">
-                <button onclick="sendMsg()" style="width:60px;">➤</button>
-            </div>
-        </div>
+      </div>
     </div>
+  </div>
 
-    <script>
-        console.log("🚀 Script started");
-        
-        let peer, localStream, call, dataConn, myId;
-        const status = document.getElementById('status');
-        
-        function log(msg) {
-            console.log(msg);
-            status.innerText = "Статус: " + msg;
-        }
+  <script>
+    const peer = new Peer(null, {
+      host: '0.peerjs.com', port: 443, path: '/', secure: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        ]
+      }
+    });
 
-        // ВХОД
-        async function doLogin() {
-            const id = document.getElementById('userId').value.trim();
-            if (!id) return alert("Введите ID!");
-            
-            log("Запрос камеры...");
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                document.getElementById('localVideo').srcObject = localStream;
-                log("Камера ОК. Подключение к PeerJS...");
-                
-                // PeerJS с публичным сервером
-                peer = new Peer(id, {
-                    host: '0.peerjs.com',
-                    port: 443,
-                    path: '/',
-                    secure: true,
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
-                        ]
-                    }
-                });
-                
-                peer.on('open', (pid) => {
-                    log("Подключен! Ваш ID: " + pid);
-                    myId = pid;
-                    document.getElementById('myId').innerText = "Ваш ID: " + pid + " (нажми чтобы скопировать)";
-                    document.getElementById('login').style.display = 'none';
-                    document.getElementById('app').style.display = 'flex';
-                });
-                
-                peer.on('error', (err) => {
-                    log("❌ PeerJS ошибка: " + err.type);
-                    console.error(err);
-                    if (err.type === 'unavailable') {
-                        alert("Сервер PeerJS недоступен. Попробуйте через 1 минуту или включите VPN.");
-                    }
-                });
-                
-                // Входящий звонок
-                peer.on('call', (incomingCall) => {
-                    log("🔔 Входящий звонок от " + incomingCall.peer);
-                    if (confirm("Звонок от " + incomingCall.peer + ". Принять?")) {
-                        incomingCall.answer(localStream);
-                        handleCall(incomingCall);
-                    }
-                });
-                
-                // Входящий чат
-                peer.on('connection', (conn) => {
-                    dataConn = conn;
-                    conn.on('data', (d) => addMsg(d, 'received'));
-                    log("Чат подключен");
-                });
-                
-            } catch (e) {
-                log("❌ Ошибка камеры: " + e.message);
-                alert("Разрешите доступ к камере в настройках браузера!");
-            }
-        }
+    let call, stream, myId, recent = JSON.parse(localStorage.getItem('p2p_recent') || '[]');
+    const $ = id => document.getElementById(id);
 
-        // ИСХОДЯЩИЙ ЗВОНОК
-        function doCall() {
-            const target = document.getElementById('targetId').value.trim();
-            if (!target) return alert("Введите ID собеседника!");
-            if (!peer || !peer.id) return alert("Сначала дождитесь подключения!");
-            
-            log("Звоним " + target + "...");
-            call = peer.call(target, localStream);
-            handleCall(call);
-            
-            // Чат
-            dataConn = peer.connect(target);
-            dataConn.on('open', () => log("Чат подключен"));
-            dataConn.on('data', (d) => addMsg(d, 'received'));
-        }
+    // Вход
+    function login() {
+      const id = $('uid').value.trim().replace(/[^a-zA-Z0-9]/g, '');
+      if (id.length < 3) return $('err').innerText = 'Только латиница и цифры (мин. 3)';
+      $('err').innerText = '';
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(s => {
+          stream = s; $('local').srcObject = s;
+          peer.id = id;
+          peer.on('open', () => {
+            myId = id; $('myid').innerText = `ID: ${id}`;
+            $('reg').style.display = 'none'; $('app').style.display = 'block';
+            $('st').innerText = 'В сети'; renderList();
+          });
+        }).catch(() => $('err').innerText = 'Разрешите доступ к камере');
+    }
 
-        // ОБРАБОТКА ЗВОНКА
-        function handleCall(incomingCall) {
-            call = incomingCall;
-            
-            call.on('stream', (remoteStream) => {
-                log("🎥 Видео получено!");
-                const rv = document.getElementById('remoteVideo');
-                rv.srcObject = remoteStream;
-                
-                // ФИКС ДЛЯ ANDROID
-                rv.muted = true;
-                rv.play().then(() => {
-                    log("✅ Видео запущено");
-                    setTimeout(() => { rv.muted = false; }, 2000);
-                }).catch(e => log("⚠️ Автоплей: " + e.message));
-            });
-            
-            call.on('close', () => {
-                log("Звонок завершен");
-                resetCallUI();
-            });
-            
-            call.on('error', (e) => {
-                log("❌ Ошибка звонка: " + e);
-                resetCallUI();
-            });
-            
-            // UI
-            document.getElementById('callBtn').classList.add('hidden');
-            document.getElementById('hangupBtn').classList.remove('hidden');
-            document.getElementById('targetId').disabled = true;
-        }
+    // Список контактов
+    function renderList() {
+      const u = $('ulist'); u.innerHTML = '';
+      if (!recent.length) u.innerHTML = '<div class="empty">Нет сохранённых контактов</div>';
+      recent.forEach(r => {
+        const d = document.createElement('div'); d.className = 'uitem';
+        d.innerHTML = `<span>${r}</span><svg width="16" height="16" viewBox="0 0 24 24" fill="#4caf50"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>`;
+        d.onclick = () => { closeMenu(); dial(r); }; u.appendChild(d);
+      });
+    }
+    function openMenu() { $('menu').style.display = 'flex'; renderList(); }
+    function closeMenu() { $('menu').style.display = 'none'; }
+    function callDirect() { const i = $('cid').value.trim(); if(i && i!==myId) { closeMenu(); dial(i); } }
 
-        function resetCallUI() {
-            document.getElementById('remoteVideo').srcObject = null;
-            document.getElementById('callBtn').classList.remove('hidden');
-            document.getElementById('hangupBtn').classList.add('hidden');
-            document.getElementById('targetId').disabled = false;
-            call = null;
-        }
+    // Звонок
+    function dial(id) {
+      if (!recent.includes(id)) { recent.unshift(id); if(recent.length>5) recent.pop(); localStorage.setItem('p2p_recent', JSON.stringify(recent)); }
+      $('st').innerText = `Соединение: ${id}`;
+      call = peer.call(id, stream);
+      setupCall(call);
+    }
 
-        function doHangup() {
-            if (call) call.close();
-            if (dataConn) dataConn.close();
-            resetCallUI();
-        }
+    peer.on('call', c => {
+      $('st').innerText = `Входящий: ${c.peer}`;
+      c.answer(stream); setupCall(c);
+    });
 
-        // ЧАТ
-        function sendMsg() {
-            const input = document.getElementById('msgInput');
-            const text = input.value.trim();
-            if (text && dataConn && dataConn.open) {
-                dataConn.send(text);
-                addMsg(text, 'sent');
-                input.value = '';
-            }
-        }
-        
-        function addMsg(text, type) {
-            const chat = document.getElementById('chat');
-            const div = document.createElement('div');
-            div.style.cssText = `background:${type==='sent'?'#007acc':'#333'}; padding:8px; margin:4px 0; border-radius:6px;`;
-            div.textContent = text;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
+    function setupCall(c) {
+      call = c;
+      c.on('stream', remote => {
+        $('remote').srcObject = remote;
+        // Android Fix
+        $('remote').muted = true; $('remote').play().catch(()=>{});
+        setTimeout(()=>$('remote').muted=false, 1500);
+        $('st').innerText = 'Подключено'; $('dot').classList.add('on');
+        $('fab').className = 'fab end'; $('hang').style.display = 'flex';
+      });
+      c.on('close', end); c.on('error', () => end());
+    }
 
-        // УТИЛИТЫ
-        function copyId() {
-            if (myId) {
-                navigator.clipboard.writeText(myId);
-                alert("ID скопирован: " + myId);
-            }
-        }
-    </script>
+    function end() {
+      if (call) call.close();
+      $('remote').srcObject = null; $('st').innerText = 'Завершено'; $('dot').classList.remove('on');
+      $('fab').className = 'fab'; $('hang').style.display = 'none'; call = null;
+    }
+    function hangup() { end(); }
+
+    // Управление
+    function toggle(type) {
+      if(!stream) return;
+      const t = type==='mic' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      t.enabled = !t.enabled;
+      $(type).className = t.enabled ? `cbtn on` : `cbtn off`;
+    }
+    function copyId() { if(myId) { navigator.clipboard.writeText(myId); alert('ID скопирован'); } }
+
+    // Enter в поле ID
+    $('uid').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
+    $('cid').addEventListener('keydown', e => { if(e.key==='Enter') callDirect(); });
+  </script>
 </body>
 </html>
