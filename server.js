@@ -1,39 +1,52 @@
+// server.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+// Разрешаем подключения с ЛЮБОГО домена (GitHub Pages, localhost, etc.)
+app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 
-// ТОЛЬКО ПАМЯТЬ. Никаких баз, никаких файлов.
-const online = new Map();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
+});
+
+// Хранилище в памяти: { userId: socketId }
+const users = new Map();
 
 io.on('connection', (socket) => {
-  socket.on('register', (id) => {
-    const cleanId = id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  // 1. Регистрация пользователя для списка онлайн
+  socket.on('register', (userId) => {
+    const cleanId = userId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (cleanId.length < 3) return;
     
-    online.set(cleanId, socket.id);
-    io.emit('user-list', Array.from(online.keys())); // Все видят всех
+    users.set(cleanId, socket.id);
+    // Рассылаем всем обновлённый список
+    io.emit('user-list', Array.from(users.keys()));
+    console.log(`[+] ${cleanId} online`);
   });
 
+  // 2. Обработка отключения (удаляем из списка)
   socket.on('disconnect', () => {
-    for (let [id, sid] of online.entries()) {
+    for (let [id, sid] of users.entries()) {
       if (sid === socket.id) {
-        online.delete(id);
-        io.emit('user-list', Array.from(online.keys())); // Все видят, что ушёл
+        users.delete(id);
+        io.emit('user-list', Array.from(users.keys()));
+        console.log(`[-] ${id} offline`);
         break;
       }
     }
   });
 
-  // Сигналинг для звонков (WebRTC)
-  socket.on('call-user', d => { const t = online.get(d.to); if(t) io.to(t).emit('incoming-call', d); });
-  socket.on('answer-call', d => { const t = online.get(d.to); if(t) io.to(t).emit('call-accepted', d.signal); });
-  socket.on('ice-candidate', d => { const t = online.get(d.to); if(t) io.to(t).emit('ice-candidate', d.candidate); });
+  // 3. Простая сигнализация для звонков (резерв, если PeerJS упадёт)
+  // Но в клиенте мы будем использовать PeerJS для надёжности
+  socket.on('signal', (data) => {
+    const target = users.get(data.to);
+    if (target) io.to(target).emit('signal', data);
+  });
 });
 
-server.listen(process.env.PORT || 3000, () => console.log('🟢 Server ready'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🟢 Server running on port ${PORT}`));
