@@ -30,6 +30,7 @@
             flex-direction: column;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         /* --- ЭКРАН ВХОДА --- */
@@ -204,7 +205,8 @@
     <!-- ИНТЕРФЕЙС -->
     <div id="app-interface">
         <div class="video-container">
-            <video id="remoteVideo" autoplay playsinline></video>
+            <!-- ВАЖНО: muted добавлен для обхода блокировки автовоспроизведения на Android -->
+            <video id="remoteVideo" autoplay playsinline muted></video>
             <video id="localVideo" autoplay muted playsinline></video>
         </div>
 
@@ -251,7 +253,6 @@
 
     <script>
         // === НАСТРОЙКИ ===
-        // Твой сервер на Render
         const SIGNALING_SERVER_URL = 'https://secure-p2p-messenger.onrender.com';
         const socket = io(SIGNALING_SERVER_URL);
         
@@ -282,6 +283,26 @@
         const chatMessages = document.getElementById('chatMessages');
         const contactsModal = document.getElementById('contactsModal');
         const contactList = document.getElementById('contactList');
+
+        // === ФИКС ДЛЯ ANDROID: Принудительный запуск видео ===
+        function forcePlayVideo(videoElement, label) {
+            if (!videoElement.srcObject) return;
+            
+            console.log(`🎬 Пытаемся запустить видео: ${label}`);
+            
+            videoElement.play()
+                .then(() => console.log(`✅ Видео запущено: ${label}`))
+                .catch(err => {
+                    console.error(`❌ Ошибка запуска видео (${label}):`, err.name, err.message);
+                    
+                    // Повторная попытка через 1 секунду
+                    setTimeout(() => {
+                        videoElement.play()
+                            .then(() => console.log(`✅ Видео запущено (повтор): ${label}`))
+                            .catch(e => console.error(`❌ Повторный запуск не удался: ${label}`, e));
+                    }, 1000);
+                });
+        }
 
         // 1. ВХОД
         function attemptLogin() {
@@ -353,9 +374,11 @@
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = e => {
+                console.log("🎥 Получен удаленный поток (исходящий)");
                 remoteVideo.srcObject = e.streams[0];
-                // Фикс для Android: явный запуск видео
-                remoteVideo.play().catch(e => console.error("Remote play error", e));
+                
+                // === ФИКС ДЛЯ ANDROID ===
+                forcePlayVideo(remoteVideo, "исходящий звонок");
                 
                 statusText.innerText = "Звонок идет";
                 btnHangup.style.display = 'flex';
@@ -381,8 +404,12 @@
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 peerConnection.ontrack = e => {
+                    console.log("🎥 Получен удаленный поток (входящий)");
                     remoteVideo.srcObject = e.streams[0];
-                    remoteVideo.play().catch(e => console.error("Remote play error", e));
+                    
+                    // === ФИКС ДЛЯ ANDROID ===
+                    forcePlayVideo(remoteVideo, "входящий звонок");
+                    
                     statusText.innerText = "Звонок идет";
                     btnHangup.style.display = 'flex';
                 };
