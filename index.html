@@ -4,17 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>P2P Messenger</title>
+  <!-- PeerJS для звонков (работает!) -->
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <!-- Socket.IO только для списка онлайн -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     :root { --bg:#0a0a0a; --panel:#111; --border:#222; --text:#e0e0e0; --accent:#fff; --danger:#cf6679; --success:#4caf50; }
     * { box-sizing:border-box; margin:0; padding:0; font-family:system-ui,sans-serif; }
     body { background:var(--bg); color:var(--text); height:100vh; overflow:hidden; display:flex; flex-direction:column; }
     
+    /* Вход */
     #login { position:fixed; inset:0; background:var(--bg); z-index:100; display:flex; align-items:center; justify-content:center; }
     .box { background:var(--panel); padding:32px; border-radius:12px; border:1px solid var(--border); width:90%; max-width:300px; text-align:center; }
     .input { width:100%; padding:14px; margin:12px 0; background:#1a1a1a; border:1px solid var(--border); color:var(--text); border-radius:8px; font-size:16px; outline:none; }
     .btn { width:100%; padding:14px; background:var(--accent); color:#000; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
     
+    /* Приложение */
     #app { display:none; height:100%; position:relative; }
     .vid { position:absolute; inset:0; background:#000; }
     #remote { width:100%; height:100%; object-fit:cover; }
@@ -23,18 +28,20 @@
     .status { position:absolute; top:16px; left:16px; background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:20px; font-size:13px; }
     .myid { position:absolute; top:16px; right:16px; background:rgba(255,255,255,0.1); padding:6px 12px; border-radius:20px; font-size:13px; cursor:pointer; }
     
-    .sidebar { position:absolute; top:0; right:0; width:240px; height:100%; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; transform:translateX(100%); transition:0.3s; }
+    /* Сайдбар со списком */
+    .sidebar { position:absolute; top:0; right:0; width:240px; height:100%; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; transform:translateX(100%); transition:0.3s; z-index:50; }
     .sidebar.open { transform:translateX(0); }
     .list { flex:1; overflow-y:auto; padding:8px; }
     .user { padding:10px 12px; border-radius:6px; display:flex; justify-content:space-between; cursor:pointer; font-size:14px; }
     .user:hover { background:#1a1a1a; }
     .empty { padding:24px; text-align:center; color:#666; font-size:13px; }
     
+    /* Управление */
     .controls { position:absolute; bottom:0; left:0; width:100%; height:80px; background:linear-gradient(transparent,#000); display:flex; justify-content:center; align-items:center; gap:20px; }
     .cbtn { width:48px; height:48px; border-radius:50%; background:rgba(255,255,255,0.12); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
     .cbtn.on { background:#fff; color:#000; }
     .cbtn.off { background:var(--danger); }
-    .fab { position:absolute; bottom:100px; right:16px; width:52px; height:52px; border-radius:50%; background:var(--accent); color:#000; border:none; font-size:20px; cursor:pointer; }
+    .fab { position:absolute; bottom:100px; right:16px; width:52px; height:52px; border-radius:50%; background:var(--accent); color:#000; border:none; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
   </style>
 </head>
 <body>
@@ -58,6 +65,7 @@
     <div class="status" id="st">Подключение...</div>
     <div class="myid" id="myid" onclick="copyId()">ID: ---</div>
     
+    <!-- Кнопка открытия списка -->
     <button class="fab" onclick="toggleSidebar()">👥</button>
 
     <div class="controls">
@@ -66,7 +74,7 @@
       <button class="cbtn" id="hang" onclick="hangup()" style="display:none;background:var(--danger)">✕</button>
     </div>
 
-    <!-- СПИСОК ОНЛАЙН -->
+    <!-- СПИСОК ОНЛАЙН (только через Socket.IO) -->
     <div class="sidebar" id="sidebar">
       <div style="padding:16px; border-bottom:1px solid var(--border); font-weight:500; display:flex; justify-content:space-between;">
         Онлайн <span onclick="toggleSidebar()" style="cursor:pointer">✕</span>
@@ -76,12 +84,11 @@
   </div>
 
   <script>
-    // 🔗 ВСТАВЬ СЮДА АДРЕС ТВОЕГО СЕРВЕРА (Render/Railway/Fly)
-    const SERVER_URL = 'https://secure-p2p-messenger.onrender.com';
-    const socket = io(SERVER_URL);
+    // 🔗 Твой сервер ТОЛЬКО для списка онлайн
+    const PRESENCE_URL = 'https://secure-p2p-messenger.onrender.com';
+    const socket = io(PRESENCE_URL);
     
-    let pc, dc, stream, myId;
-    const rtc = { iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}] };
+    let peer, call, stream, myId;
     const $ = id => document.getElementById(id);
 
     function login() {
@@ -91,15 +98,36 @@
       navigator.mediaDevices.getUserMedia({video:true,audio:true}).then(s => {
         stream = s; $('local').srcObject = s;
         myId = id;
-        socket.emit('register', myId);
-        $('login').style.display = 'none';
-        $('app').style.display = 'block';
-        $('myid').innerText = `ID: ${id}`;
-        $('st').innerText = 'В сети';
+        
+        // 1. Подключаемся к PeerJS для звонков (как раньше, когда работало)
+        peer = new Peer(myId, {
+          host: '0.peerjs.com', port: 443, path: '/', secure: true,
+          config: { iceServers: [{urls:'stun:stun.l.google.com:19302'}] }
+        });
+        
+        peer.on('open', () => {
+          $('login').style.display = 'none';
+          $('app').style.display = 'block';
+          $('myid').innerText = `ID: ${id}`;
+          $('st').innerText = 'В сети';
+          
+          // 2. Регистрируемся на своём сервере ТОЛЬКО для списка онлайн
+          socket.emit('register', myId);
+        });
+        
+        peer.on('error', err => { $('err').innerText = 'PeerJS: ' + err.type; });
+        
+        // Входящий звонок через PeerJS
+        peer.on('call', c => {
+          if(confirm(`Звонок от ${c.peer}. Принять?`)) {
+            c.answer(stream);
+            handleCall(c);
+          }
+        });
       }).catch(() => $('err').innerText = 'Разрешите камеру');
     }
 
-    // СПИСОК ОНЛАЙН (просто получаем и показываем)
+    // 📋 Получение списка онлайн (только через Socket.IO)
     socket.on('user-list', users => {
       const list = $('ulist'); list.innerHTML = '';
       const others = users.filter(u => u !== myId);
@@ -107,52 +135,37 @@
       others.forEach(u => {
         const d = document.createElement('div'); d.className = 'user';
         d.innerHTML = `<span>${u}</span>📞`;
-        d.onclick = () => { toggleSidebar(); dial(u); };
+        d.onclick = () => { toggleSidebar(); dial(u); }; // Звонок через PeerJS
         list.appendChild(d);
       });
     });
 
     function toggleSidebar() { $('sidebar').classList.toggle('open'); }
 
+    // 📞 Звонок через PeerJS (надёжно)
     function dial(id) {
+      if(!peer || !peer.open) return alert('Подождите подключения...');
       $('st').innerText = `Набор: ${id}`;
-      pc = new RTCPeerConnection(rtc);
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      
-      pc.ontrack = e => {
-        $('remote').srcObject = e.streams[0];
-        $('remote').muted = true; $('remote').play().catch(()=>{});
-        setTimeout(()=>$('remote').muted=false, 1500); // Android fix
-        $('st').innerText = 'Подключено';
-        $('hang').style.display = 'flex';
-      };
-      
-      pc.onicecandidate = e => { if(e.candidate) socket.emit('ice-candidate',{to:id,candidate:e.candidate}); };
-      dc = pc.createDataChannel('chat');
-      dc.onmessage = e => console.log('msg:',e.data);
-      
-      pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => {
-        socket.emit('call-user',{to:id,signal:pc.localDescription,from:myId});
-      });
+      const call = peer.call(id, stream);
+      handleCall(call);
     }
 
-    socket.on('incoming-call', async d => {
-      if(!confirm(`Звонок от ${d.from}. Принять?`)) return;
-      pc = new RTCPeerConnection(rtc);
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      pc.ontrack = e => { $('remote').srcObject = e.streams[0]; $('remote').muted=true; $('remote').play().catch(()=>{}); setTimeout(()=>$('remote').muted=false,1500); $('st').innerText='Подключено'; $('hang').style.display='flex'; };
-      pc.ondatachannel = e => { dc=e.channel; dc.onmessage=m => console.log('msg:',m.data); };
-      pc.onicecandidate = e => { if(e.candidate) socket.emit('ice-candidate',{to:d.from,candidate:e.candidate}); };
-      await pc.setRemoteDescription(new RTCSessionDescription(d.signal));
-      const ans = await pc.createAnswer();
-      await pc.setLocalDescription(ans);
-      socket.emit('answer-call',{to:d.from,signal:ans});
-    });
+    function handleCall(c) {
+      call = c;
+      c.on('stream', remote => {
+        $('remote').srcObject = remote;
+        // Android fix
+        $('remote').muted = true; $('remote').play().catch(()=>{});
+        setTimeout(()=>$('remote').muted=false, 1500);
+        $('st').innerText = 'Подключено';
+        $('hang').style.display = 'flex';
+      });
+      c.on('close', endCall);
+      c.on('error', () => endCall());
+    }
 
-    socket.on('call-accepted', async s => { if(pc) await pc.setRemoteDescription(new RTCSessionDescription(s)); });
-    socket.on('ice-candidate', async c => { if(pc) await pc.addIceCandidate(new RTCIceCandidate(c)); });
-
-    function hangup() { if(pc) pc.close(); $('remote').srcObject=null; $('st').innerText='Завершено'; $('hang').style.display='none'; pc=null; }
+    function endCall() { if(call) call.close(); $('remote').srcObject=null; $('st').innerText='Завершено'; $('hang').style.display='none'; call=null; }
+    function hangup() { endCall(); }
     function toggle(type) { if(!stream) return; const t=type==='mic'?stream.getAudioTracks()[0]:stream.getVideoTracks()[0]; t.enabled=!t.enabled; $(type).className=t.enabled?'cbtn on':'cbtn off'; }
     function copyId() { if(myId) { navigator.clipboard.writeText(myId); alert('Скопировано'); } }
     $('uid').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
